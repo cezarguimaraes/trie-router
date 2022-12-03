@@ -122,17 +122,27 @@ const node_t *_router_match_(
     const node_t *const current, 
     const char *path, 
     const size_t at, const size_t until,
-    size_t *const out_match_start, size_t *const out_match_end, size_t *const max_matches
+    size_t *const out_match_start, size_t *const out_match_end, size_t *const out_matches,
+    size_t const cur_match, size_t const max_matches
 ) {
     // params were made const to avoid mistakes if this function is ever converted to backtrack
     if (at == until) {
+        if (out_matches != NULL) {
+            *out_matches = cur_match;
+        }
         return current;
     }
 
     // first attempt matching exactly
     node_t *next = current->next[(size_t)path[at]];
     if (next != NULL) {
-        const node_t *exact = _router_match_(next, path, at+1, until, out_match_start, out_match_end, max_matches);
+        const node_t *exact = _router_match_(
+            next,
+            path,
+            at+1, until,
+            out_match_start, out_match_end, out_matches,
+            cur_match, max_matches
+        );
         if (exact != NULL && exact->match) {
             return exact;
         }
@@ -143,13 +153,24 @@ const node_t *_router_match_(
     if (wildcardNode != NULL && at > 0 && path[at-1] == '/') {
         size_t continueAt = at;
         while (++continueAt < until && path[continueAt] != '/');
-        if (max_matches != NULL && *max_matches > 0) {
+        if (cur_match < max_matches) {
             *out_match_start = at;
             *out_match_end = continueAt;
-            *max_matches -= 1; // this needs to be undone if we were to backtrack
-            return _router_match_(wildcardNode, path, continueAt, until, out_match_start+1, out_match_end+1, max_matches);
+            return _router_match_(
+                wildcardNode,
+                path,
+                continueAt, until,
+                out_match_start+1, out_match_end+1, out_matches,
+                cur_match+1, max_matches
+            );
         } else {
-            return _router_match_(wildcardNode, path, continueAt, until, out_match_start, out_match_end, max_matches);
+            return _router_match_(
+                wildcardNode,
+                path,
+                continueAt, until,
+                out_match_start, out_match_end, out_matches,
+                cur_match, max_matches
+            );
         }
     }
 
@@ -157,11 +178,11 @@ const node_t *_router_match_(
 }
 
 const node_t *_router_match(router_t *r, const char *path) {
-    return _router_match_(r->root, path, 0, strlen(path), NULL, NULL, NULL);
+    return _router_match_(r->root, path, 0, strlen(path), NULL, NULL, NULL, 0, 0);
 }
 
-const node_t *_router_match_with_captures(router_t *r, const char *path, size_t *out_match_start, size_t *out_match_end, size_t *max_matches) {
-    return _router_match_(r->root, path, 0, strlen(path), out_match_start, out_match_end, max_matches);
+const node_t *_router_match_with_captures(router_t *r, const char *path, size_t *out_match_start, size_t *out_match_end, size_t *out_matches, size_t max_matches) {
+    return _router_match_(r->root, path, 0, strlen(path), out_match_start, out_match_end, out_matches, 0, max_matches);
 }
 
 router_match_t *router_match_new(size_t max_captures) {
@@ -182,14 +203,12 @@ void router_match_free(router_match_t *m) {
 }
 
 bool router_match(router_t *r, const char *path, router_match_t *out_match) {
-    size_t _max_captures = out_match->max_captures;
-    const node_t *found = _router_match_with_captures(r, path, out_match->start, out_match->end, &_max_captures);
+    const node_t *found = _router_match_with_captures(r, path, out_match->start, out_match->end, &out_match->captures, out_match->max_captures);
     if (found == NULL || !found->match) {
         return false;
     }
     out_match->value = found->value;
     out_match->slugs = found->slugs;
-    out_match->captures = out_match->max_captures - _max_captures;
     return true;
 }
 

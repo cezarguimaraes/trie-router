@@ -19,6 +19,12 @@ int main(int argc, char *argv[]) {
     node_t *oneSlug = _router_add_slugs(&r, "/:product/p");
     node_t *oneConflictingSlug = _router_add_slugs(&r, "/:blog-post/b");
     /* node_t *twoSlugs =*/ _router_add_slugs(&r, "/:month/:day/updates");
+    node_t *priorityOne = _router_add(&r, "/foo/*");
+    /*node_t *priorityTwo =*/ _router_add(&r, "/*/baz");
+
+    /*node_t *conflictOne =*/ _router_add(&r, "/foo/*/a");
+    node_t *conflictTwo = _router_add(&r, "/*/baz/b");
+
 
     const node_t *p = _router_exact_find(&r, "/");
     assert(p == index);
@@ -64,25 +70,41 @@ int main(int argc, char *argv[]) {
     const size_t MAX_MATCHES = 10;
     size_t match_start[MAX_MATCHES], match_end[MAX_MATCHES];
 
-    size_t max_matches = MAX_MATCHES;
-    p = _router_match_with_captures(&r, "/my-product-slug/p", match_start, match_end, &max_matches);
+    size_t matches;
+    p = _router_match_with_captures(&r, "/my-product-slug/p", match_start, match_end, &matches, MAX_MATCHES);
     assert(p == oneSlug);
     assert(p->match);
     // matches my-product-slug
     assert(match_start[0] == 1);
     assert(match_end[0] == 16);
-    assert(MAX_MATCHES - max_matches == 1); // only 1 capture
+    assert(matches == 1); // only 1 capture
     assert(strcmp(p->slugs[0], "product") == 0);
 
-    max_matches = MAX_MATCHES;
-    p = _router_match_with_captures(&r, "/my-blog-post-slug/b", match_start, match_end, &max_matches);
+    p = _router_match_with_captures(&r, "/my-blog-post-slug/b", match_start, match_end, &matches, MAX_MATCHES);
     assert(p == oneConflictingSlug);
     assert(p->match);
     // matches my-product-slug
     assert(match_start[0] == 1);
     assert(match_end[0] == 18);
-    assert(MAX_MATCHES - max_matches == 1); // only 1 capture
+    assert(matches == 1); // only 1 capture
     assert(strcmp(p->slugs[0], "blog-post") == 0);
+
+    p = _router_match_with_captures(&r, "/foo/baz", match_start, match_end, &matches, MAX_MATCHES);
+    assert(p == priorityOne);
+    assert(p->match);
+    assert(match_start[0] == 5);
+    assert(match_end[0] == 8);
+    assert(matches == 1); // only 1 capture
+    assert(p->slugs == NULL);
+
+    p = _router_match_with_captures(&r, "/foo/baz/b", match_start, match_end, &matches, MAX_MATCHES);
+    assert(p == conflictTwo);
+    assert(p->match);
+    // matches my-product-slug
+    assert(match_start[0] == 1);
+    assert(match_end[0] == 4);
+    assert(matches == 1); // only 1 capture
+    assert(p->slugs == NULL);
 
     router_match_t *match = router_match_new(MAX_MATCHES);
     assert(router_match(&r, "/january/5/updates", match));
